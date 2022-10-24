@@ -16,7 +16,7 @@ global{
 	//list<int> param_instance <- [3,4];
 	list<int> param_instance <- [2];
 	//list<int> param_instance <- [0];
-	list<string> param_approach <- ['hybrid', 'planner'];
+	list<string> param_approach <- ['agent', 'hybrid', 'planner'];
 	//list<string> param_approach <- ['agent'];
 	//list<int> param_tofail <- [4];
 	list<int> param_tofail <- [0,1,2,3,4,5,6,7];
@@ -31,7 +31,7 @@ global{
 	list<int> param_seed <- range(1,total_runs);
 	int idx_instance <- 0;
 	int idx_approach <- 0;
-	int idx_tofail <- 7;
+	int idx_tofail <- 0;
 	int idx_seed <- 0;
 	///////////////////////////////////////////////////////////////////
 	///////////////////////////////////////////////////////////////////
@@ -44,7 +44,7 @@ global{
 	bool simulation_init <- true;
 	geometry shape <- rectangle(300#m,300#m);
 	//float communication_range <- 5#m;
-	float communication_range <- 50000#m;
+	float communication_range <- 50#m;
 	int mission_count <-0;
 	bool stop <- false;
 	bool ping  <- true; 
@@ -59,7 +59,7 @@ global{
 	string approach <- param_approach[idx_approach];
 	int still_to_fail <- param_tofail[idx_tofail];
 	int instance <- param_instance[idx_instance];
-	int run_number <- 2;
+	int run_number <- 1;
 	float seed <- run_number + 3165658666.0;
 	float keep_seed <- seed;
 	int new_plan <- 1;
@@ -1508,13 +1508,68 @@ species simAgents skills: [moving, network]{
 									}
 								}
 							}
-							// Set task color to agent color
-							// color <- simAgents.population[agent_to_assign-1].color;
+							else{
+								if approach = "hybrid"{
+									write "Self-allocation failed. Ask planner for plan";
+									if !asking_planner{
+										asking_planner <- true;
+										plan_active <- false;
+										completed_tasks_zeroed <- 0;
+										list<int> remaining_agents_local;
+										ask simulation_server{
+											loop a over: all_agents{
+												if ! (myself.known_failed_global contains a) and ! (agents_pending contains a){
+													add a to: remaining_agents_local;
+												}
+											}
+										}
+											
+										do ask_for_replan(tasks_completed_global, remaining_agents_local); 
+									}
+									else {
+										if verbose{
+											write "Already being taken care of";
+										}
+									}
+									write "Breaking";
+									break;
+								}
+								else if approach = "agent"{
+									//add the task to the list: tasks_left_unassigned idx
+									add t to: tasks_left_unassigned;
+									write "The list of uncompleted task: " + tasks_left_unassigned;
+									if verbose{
+										save ("The list of uncompleted task: " + tasks_left_unassigned) to: output_file_base+"results.txt" type: "text" rewrite: false;
+										
+									}
+									
+								}
+							}
 						}
 						
 					}
 				
 				}
+				
+				//Re-Calculate the max expected duration
+				int max_duration <- 0;
+						
+				ask simAgents{
+					int dur <- 0;
+							
+					if length(tasks_todo) > 0{
+						dur <- calc_duration();
+					}
+							
+					if dur > max_duration{
+						max_duration <- dur;
+						}
+				}
+						
+				//Adjust the tirgger to the watchdog based on the max duration.
+				watchdog_trigger <- max_duration;
+				temp_cycle <- 0;
+				save ("READJUST (gossip) watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;
 			}
 		}
 	}
