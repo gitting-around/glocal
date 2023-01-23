@@ -30,6 +30,9 @@ global{
 	int smth <- 1;
 	bool ping  <- true;
 	bool temp <- false; 
+	
+	list test <- [[[1],[2],[3],[4]], [[1,1],[2,2],[3,3],[4,4]] ,[[1,1,1],[2,2,2],[3,3,3],[4,4,4]]];
+	
 	init{
 		
 		float x  <- 1.3;
@@ -41,27 +44,20 @@ global{
 		csv_file agf  <- csv_file("agents.csv", ";", true);
 		matrix agent_data <- matrix(agf);
 		
-		create simAgents number: 3 {
+		create simAgents number: 1 {
 			
 		}
-		write length(agent_data)/5;
 		
 	}
 	
-	reflex check {
-		write simAgents.population;
-		ask simAgents{
-			do die;
-		}
-		write  simAgents.population;
-		write dead(simAgents(0));
+	reflex read {
+		write test[0,2];
+		write test[1,2];
+		write test[2][2];
 		
-		create simAgents number: 3 {
-			
-		}
-		
-		write simAgents.population;
 	}
+	
+
 	
 }
 
@@ -75,7 +71,7 @@ species simAgents  skills: [moving]{
 	reflex start when: init {
 		
 		init <- false;
-		write name;
+		//write name;
 	}
 	
 

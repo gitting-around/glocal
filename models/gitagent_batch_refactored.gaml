@@ -1,30 +1,38 @@
 /**
-* Name: gitagent_batch
+* Name: gitagentbatchrefactored
 * Based on the internal empty template. 
 * Author: Super PC
 * Tags: 
 */
 
 
-model gitagent_batch
+model gitagentbatchrefactored
+/**
+* Name: gitagent_batch
+* Based on the internal empty template. 
+* Author: Super PC
+* Tags: 
+*/
 
 global{
 	
 	///////////////////////////////////////////////////////////////////
 	//Defining parameters for batch experiments////////////////////////
 	list<int> taskset_lengths <- [50,100,150,300,500];
-	//list<int> param_instance <- [3,4];
-	list<int> param_instance <- [2];
+	//list<int> param_instance <- [0];
+	list<int> param_instance <- [0,1,2];
 	//list<int> param_instance <- [0];
 	list<string> param_approach <- ['agent', 'hybrid', 'planner'];
 	//list<string> param_approach <- ['agent'];
-	//list<int> param_tofail <- [4];
+	//list<int> param_tofail <- [1,2,3];
 	list<int> param_tofail <- [0,1,2,3,4,5,6,7];
 	list unique_agent_equipment <- [];
 	list unique_task_equipment <- [];
 	list<tasks> total_completed_tasks_global <- []; // this list is not used by agents, it's only for the checking feasibility of the plan
 	//list<int> param_tofail <- [0];
 	int total_runs <- 30;
+	list<list<list<int>>> failing_agents <- [[], [], [], [], [], [], [], []];
+
 	//list<string> param_approach <- ['agent'];
 	//list<int> param_tofail <- [3];
 	//int total_runs <- 1;
@@ -44,7 +52,8 @@ global{
 	bool simulation_init <- true;
 	geometry shape <- rectangle(300#m,300#m);
 	//float communication_range <- 5#m;
-	float communication_range <- 50#m;
+    //float communication_range <- 10000000#m;
+	float communication_range <- 100#m;
 	int mission_count <-0;
 	bool stop <- false;
 	bool ping  <- true; 
@@ -60,6 +69,7 @@ global{
 	int still_to_fail <- param_tofail[idx_tofail];
 	int instance <- param_instance[idx_instance];
 	int run_number <- 1;
+	list<int> agents2fail <- [];
 	float seed <- run_number + 3165658666.0;
 	float keep_seed <- seed;
 	int new_plan <- 1;
@@ -114,6 +124,11 @@ global{
 		
 		write "Running experiment with instance " + instance + " with approach " + approach + " with failures " + still_to_fail + " and run number " + run_number + " seed " + seed;
 
+		loop el over: range(0,length(failing_agents)-1){
+			loop t over: range(0,total_runs-1){
+				add [] to: failing_agents[el,t];
+			}
+		}
 	}
 	
 	reflex shutdown when: stop{
@@ -158,6 +173,7 @@ species simulation_server skills: [network]{
 			
 			//On simulation init, initialize both simAgents and tasks with the locations and equipments as defined in the plan
 			if simulation_init{
+				
 				temp_cycle <- 0;
 				seed <- run_number + 3165658666.0;
 				infeasible <- false;
@@ -418,7 +434,7 @@ species simulation_server skills: [network]{
 
 	}
 	
-	reflex fail_agent when: still_to_fail > 0 and plan_active{//fail an agent only during the execution of a plan and if there are still fails to be injected
+	reflex fail_agent when: still_to_fail > 0 and plan_active and false {//fail an agent only during the execution of a plan and if there are still fails to be injected
 		if completed_tasks >= progress + progress_diff{
 			progress <- progress + progress_diff;
 			if verbose{
@@ -429,6 +445,7 @@ species simulation_server skills: [network]{
 			
 			
 			loop while: !failing and (length(agts) < simAgents_nr_hardcoded - still_to_fail){
+
 				ask one_of(simAgents){
 					if !failed and length(tasks_todo) > 0{
 						write "I Robot: " + name + " am out." + " At time: " + cycle color: #red; 
@@ -468,6 +485,102 @@ species simulation_server skills: [network]{
 			}
 		}
 		
+	}
+	
+	reflex fail_agent_fixed when: still_to_fail > 0 and plan_active{
+		if completed_tasks >= progress + progress_diff{
+			progress <- progress + progress_diff;
+			if verbose{
+				save ("Time to fail where completed tasks:"+completed_tasks+" progress: " + progress + " and progress diff: " + progress_diff + " At time: " + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			}			
+			
+			bool failing <- false;
+			list<int> agts <-  [];
+			
+							
+			//param_tofail[idx_tofail];
+			
+			write failing_agents[param_tofail[idx_tofail]][run_number-1];
+			write length(failing_agents[param_tofail[idx_tofail]][run_number-1]);
+			if length(failing_agents[param_tofail[idx_tofail]][run_number-1]) < param_tofail[idx_tofail]{
+
+				loop while: !failing and (length(agts) < simAgents_nr_hardcoded - still_to_fail){
+	
+					ask one_of(simAgents){
+						if !failed and length(tasks_todo) > 0{
+							write "I Robot: " + name + " am out." + " At time: " + cycle color: #red; 
+							remove int(name) from: myself.alive_agents;
+							if verbose{
+								save ("I Robot: " + name + " am out." + " At time: " + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+							}
+							failed <- true;
+							tasks_todo <- [];
+							tasks_todo_idx <- [];
+							
+							failing <- true;
+							
+							add int(name) to: failing_agents[param_tofail[idx_tofail]][run_number-1];
+							
+						}
+						else{
+							if ! (agts contains name){
+								add int(name) to: agts;
+							}
+							write "I Robot: " + name + " am already dead, or my taskset is empty> "+ tasks_todo+", try again At time: " + cycle color: #red; 
+							if verbose{
+								save ("I Robot: " + name + " am already dead At time: " + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+							}
+						}
+					}
+				}
+			}
+			else{
+				save ("\nfailing agents: " + failing_agents + " failing this simulation" + failing_agents[param_tofail[idx_tofail]][run_number-1]) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				list tofail <- failing_agents[param_tofail[idx_tofail]][run_number-1];
+				int tofail_idx <- tofail[length(tofail) - still_to_fail];
+				save ("\ntofail:  idx" + tofail_idx) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				
+				ask simAgents[tofail_idx] {
+					if !failed{
+						write "I Robot: " + name + " am out." + " At time: " + cycle color: #red; 
+						remove int(name) from: myself.alive_agents;
+						if verbose{
+							save ("I Robot: " + name + " am out." + " At time: " + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+						}
+						failed <- true;
+						tasks_todo <- [];
+						tasks_todo_idx <- [];
+						
+						failing <- true;
+						if !(length(tasks_todo) > 0){
+							save ("WARNING: this agent was doing nothing when it failed") to: output_file_base+"results.txt" type: "text" rewrite: false;
+							
+						}
+						
+					}
+					else{
+						save ("WARNING: why did this robot fail " + failed + " " + length(tasks_todo)) to: output_file_base+"results.txt" type: "text" rewrite: false;
+					}
+					
+				}
+			}
+			
+			if failing{
+				
+				still_to_fail <- still_to_fail - 1;
+
+				write "still to fail: " + still_to_fail + "  at time " + time_to_fail;
+				
+				
+				save ("Check feasibility " ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+					
+				do check_feasibility;
+				
+			}
+
+			
+			
+		}
 	}
 	
 	action check_feasibility{
@@ -809,13 +922,149 @@ species simAgents skills: [moving, network]{
 	
 	}
 	
-	action filter_dead_agents{
-		//TODO refactor loop a over: agents_close_by
+	//Filter agents that are dead, from the ones within the range.
+	list<simAgents> filter_dead_agents{
+		//refactor loop a over: agents_close_by
+		//get agents in the range
+		list agents_to_ask <- simAgents at_distance communication_range;
+		//remove dead agents
+		list filtered_agents_close_by <- [];
+		loop a over:agents_to_ask{
+			if ! a.failed{
+				add a to: filtered_agents_close_by; // this we can keep because in a real scenario sending a message to a dead agent will not yield a response anyway. 
+			}
+			//TODO maybe add here to known_failed_global the id of the failed agent if not there yet.
+		}
+		
+		return filtered_agents_close_by;
 	}
 	
-	action talk{
-		//TODO refactor ask one_of(filtered_agents_close_by) as: simAgents
+	//Filter agents that I know to be dead or whom I talked to, from the ones within the range.
+	list<simAgents> filter_agents{
+		//refactor loop a over: agents_close_by
+		list agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
+		list filtered_agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
+		filtered_agents_close_by <- (filtered_agents_close_by sort_by (each.name)) ;
+		if verbose{
+			save ("Agents close by: " + agents_close_by + " to agent " + name) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			save ("Already talked to: " + already_talked_this_cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+		}
+		loop a over: agents_close_by {
+			
+			int id <- a.name as_int 10;
+			if (already_talked_this_cycle contains id) or (known_failed_global contains id){
+				remove a from: filtered_agents_close_by;
+			}
+		}
 		
+		return filtered_agents_close_by;
+	}
+	
+	int talk(list<simAgents> filtered_agents_close_by){
+		//refactor ask one_of(filtered_agents_close_by) as: simAgents
+		int agent_has_failed <- -1;
+		//Exchange data with a randomly picked agent in the list
+		ask one_of(filtered_agents_close_by) as: simAgents{//ask agents with id below or above the agent's own id.
+			if verbose{
+				save ("Agent: " + myself.name + " talking to: " + name) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			}
+			 //write "Agent: " + myself.name + " talking to: " + name;
+			add myself.name as_int 10 to: already_talked_this_cycle;
+			if failed {//If agent has failed, it is detected here
+				agent_has_failed <- name as_int 10;
+				add name to: known_failed;
+				add name as_int 10 to: myself.known_failed_global;
+				write "Detected failure of " + agent_has_failed + " at time" + cycle;
+				save ("Detected failure of " + agent_has_failed + " at time" + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			}
+			else {
+				//update these agents with the status of the requesting agent
+				//Agreggate info wrt to tasks
+				list<int> combined <- myself.tasks_completed_global;
+				if verbose{
+					//write "The global state requesting agent knows: " + combined;
+					save ("The global state requesting agent knows: " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+				loop i over: myself.tasks_done_by_me{
+					if ! (combined contains i){
+						add i to: combined;
+					}
+				}
+				if verbose{
+					//write "Adding own tasks: " + myself.tasks_done_by_me + " to " + combined;
+					save ("Adding own tasks: " + myself.tasks_done_by_me + " to " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+				loop i over: tasks_done_by_me{
+					if ! (combined contains i){
+						add i to: combined;
+					}
+				}
+				if verbose{
+					//write "Adding other agent own tasks: " + tasks_done_by_me + " to " + combined;
+					save ("Adding other agent own tasks: " + tasks_done_by_me + " to " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+				loop i over: tasks_completed_global{
+					if ! (combined contains i){
+						add i to: combined;
+					}
+				}
+				if verbose{
+					write "Adding other agent known global: " + tasks_completed_global + " to " + combined;
+					save ("Adding other agent known global: " + tasks_completed_global + " to " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				} 
+				//list<int> combined <- combine(myself.tasks_completed_global, myself.tasks_done_by_me, tasks_completed_global, tasks_done_by_me);
+				//Update agent that asks
+				myself.tasks_completed_global <- combined;
+				//Update agent that receives
+				tasks_completed_global <- combined;
+				
+				//Aggregate info wrt to failed agents
+				combined <- myself.known_failed_global;
+				if verbose{
+					save ("Self knows failed: " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+				//write "Self knows failed: " + combined;
+				loop i over: known_failed_global{
+					if ! (combined contains i){
+						add i to: combined;
+					}
+				}
+				if verbose{
+					save ("Updated knows failed: " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+				//write "Updated knows failed: " + combined;
+				myself.known_failed_global <- combined;
+				known_failed_global <- combined;
+				
+				int tt <- myself.name as_int 10;
+				myself.pending_tasks[tt] <- myself.tasks_left_unassigned + myself.new_tasks;
+				
+				int tt2 <- name as_int 10;
+				pending_tasks[tt2] <-tasks_left_unassigned + new_tasks;
+				
+				//combine pending_tasks
+				list<list> combined_pending_tasks <- myself.pending_tasks;
+				int j <- 0;
+				loop lst over: pending_tasks{
+					loop i over: lst{
+						if ! (combined_pending_tasks[j] contains i){
+						add i to: combined_pending_tasks[j];
+						}
+					}
+					j  <- j + 1;
+				}
+				myself.pending_tasks <- combined_pending_tasks;
+				pending_tasks <- combined_pending_tasks;
+				
+				
+				if verbose{
+					save ("tasks_left_unassigned, for asking agent: " + myself.pending_tasks + " for responding agent> " + pending_tasks) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+			}
+			
+		}
+		
+		return agent_has_failed;
 	}
 	
 	reflex doTasks when: length(tasks_todo) > 0{
@@ -902,129 +1151,22 @@ species simAgents skills: [moving, network]{
 	}
 
 	reflex gossip when: !failed and !simulation_init and !asking_planner{
+		
 		//Get list of agents close by
-		list agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
-		list filtered_agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
-		filtered_agents_close_by <- (filtered_agents_close_by sort_by (each.name)) ;
-		if verbose{
-			save ("Agents close by: " + agents_close_by + " to agent " + name) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			save ("Already talked to: " + already_talked_this_cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
-		}
-		loop a over: agents_close_by {
-			
-			int id <- a.name as_int 10;
-			if (already_talked_this_cycle contains id) or (known_failed_global contains id){
-				remove a from: filtered_agents_close_by;
-			}
-		}
+		list<simAgents> filtered_agents_close_by;
+		filtered_agents_close_by <- filter_agents();
+
 		if verbose{
 			save ("Locally known as dead: " + known_failed_global + "\n" + "Agents close by: " + filtered_agents_close_by) to: output_file_base+"results.txt" type: "text" rewrite: false;
 		}
+		
 		//if list of agents is not empty, go ahead and ask one of them
 		int agent_has_failed <- -1;
 		if length(filtered_agents_close_by) > 0{
 			sent_msgs <- sent_msgs + 1;
-			//Exchange data with a randomly picked agent in the list
-			ask one_of(filtered_agents_close_by) as: simAgents{//ask agents with id below or above the agent's own id.
-			if verbose{
-				save ("Agent: " + myself.name + " talking to: " + name) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			}
-			 //write "Agent: " + myself.name + " talking to: " + name;
-				add myself.name as_int 10 to: already_talked_this_cycle;
-				if failed {//If agent has failed, it is detected here
-					agent_has_failed <- name as_int 10;
-					add name to: known_failed;
-					add name as_int 10 to: myself.known_failed_global;
-					write "Detected failure of " + agent_has_failed + " at time" + cycle;
-					save ("Detected failure of " + agent_has_failed + " at time" + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
-				}
-				else {
-					//update these agents with the status of the requesting agent
-					//Agreggate info wrt to tasks
-					list<int> combined <- myself.tasks_completed_global;
-					if verbose{
-						//write "The global state requesting agent knows: " + combined;
-						save ("The global state requesting agent knows: " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					}
-					loop i over: myself.tasks_done_by_me{
-						if ! (combined contains i){
-							add i to: combined;
-						}
-					}
-					if verbose{
-						//write "Adding own tasks: " + myself.tasks_done_by_me + " to " + combined;
-						save ("Adding own tasks: " + myself.tasks_done_by_me + " to " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					}
-					loop i over: tasks_done_by_me{
-						if ! (combined contains i){
-							add i to: combined;
-						}
-					}
-					if verbose{
-						//write "Adding other agent own tasks: " + tasks_done_by_me + " to " + combined;
-						save ("Adding other agent own tasks: " + tasks_done_by_me + " to " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					}
-					loop i over: tasks_completed_global{
-						if ! (combined contains i){
-							add i to: combined;
-						}
-					}
-					if verbose{
-						write "Adding other agent known global: " + tasks_completed_global + " to " + combined;
-						save ("Adding other agent known global: " + tasks_completed_global + " to " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					} 
-					//list<int> combined <- combine(myself.tasks_completed_global, myself.tasks_done_by_me, tasks_completed_global, tasks_done_by_me);
-					//Update agent that asks
-					myself.tasks_completed_global <- combined;
-					//Update agent that receives
-					tasks_completed_global <- combined;
-					
-					//Aggregate info wrt to failed agents
-					combined <- myself.known_failed_global;
-					if verbose{
-						save ("Self knows failed: " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					}
-					//write "Self knows failed: " + combined;
-					loop i over: known_failed_global{
-						if ! (combined contains i){
-							add i to: combined;
-						}
-					}
-					if verbose{
-						save ("Updated knows failed: " + combined) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					}
-					//write "Updated knows failed: " + combined;
-					myself.known_failed_global <- combined;
-					known_failed_global <- combined;
-					
-					int tt <- myself.name as_int 10;
-					myself.pending_tasks[tt] <- myself.tasks_left_unassigned + myself.new_tasks;
-					
-					int tt2 <- name as_int 10;
-					pending_tasks[tt2] <-tasks_left_unassigned + new_tasks;
-					
-					//combine pending_tasks
-					list<list> combined_pending_tasks <- myself.pending_tasks;
-					int j <- 0;
-					loop lst over: pending_tasks{
-						loop i over: lst{
-							if ! (combined_pending_tasks[j] contains i){
-							add i to: combined_pending_tasks[j];
-							}
-						}
-						j  <- j + 1;
-					}
-					myself.pending_tasks <- combined_pending_tasks;
-					pending_tasks <- combined_pending_tasks;
-					
-					
-					if verbose{
-						save ("tasks_left_unassigned, for asking agent: " + myself.pending_tasks + " for responding agent> " + pending_tasks) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					}
-				}
-				
-			}
-			
+
+			agent_has_failed <- talk(filtered_agents_close_by);
+
 			if ! (agent_has_failed = -1){
 				ask simulation_server{
 					if !(dead_agents contains agent_has_failed){
@@ -1033,23 +1175,13 @@ species simAgents skills: [moving, network]{
 				}
 				if approach = "planner"{
 					if !asking_planner{
-						asking_planner <- true;
-						plan_active <- false;
-						completed_tasks_zeroed <- 0;
-						
-						list<int> remaining_agents_local;
 						ask simulation_server{
 							remove agent_has_failed from: alive_agents;
 							write "Asking planner, dead agent " + agent_has_failed + " remaining alive " + alive_agents;
 							save ("remaining agents: " + alive_agents) to: output_file_base+"results.txt" type: "text" rewrite: false;
-							
-							loop a over: all_agents{
-								if ! (myself.known_failed_global contains a){
-									add a to: remaining_agents_local;
-								}
-							}
+
 						}
-						do ask_for_replan(tasks_completed_global, remaining_agents_local); 
+						do go_with_planner([]);
 					}
 					else {
 						if verbose{
@@ -1081,7 +1213,7 @@ species simAgents skills: [moving, network]{
 					}
 					//write "Failed agent " + agent_has_failed + " assigned " + tasks_assigned;
 					//get list of uncompleted tasks
-					list tasks_uncompleted <- [];
+					list<int> tasks_uncompleted <- [];
 					loop t over:tasks_assigned{
 						if !(tasks_completed_global contains t){
 							add t to: tasks_uncompleted;
@@ -1096,103 +1228,35 @@ species simAgents skills: [moving, network]{
 					float willingness <- -1.0;
 					int agent_to_assign <- -1;
 					int insert_location <- -2;
+					filtered_agents_close_by <- filter_dead_agents();
 					loop t over: tasks_uncompleted{
-						list my_out <- calculate_willingness(all_task_ids index_of t);
-						willingness <- my_out[0];
-						insert_location <- my_out[1];
-						agent_to_assign <- name as_int 10;
-						if verbose{
-							//write "Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location;
-							save ("Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
-						}
-						//get agents in the range
-						list agents_to_ask <- simAgents at_distance communication_range;
-						//remove dead agents
-						list filtered_agents_to_ask <- [];
-						loop a over:agents_to_ask{
-							if ! a.failed{
-								add a to: filtered_agents_to_ask; // this we can keep because in a real scenario sending a message to a dead agent will not yield a response anyway. 
-							}
-							//TODO maybe add here to known_failed_global the id of the failed agent if not there yet.
-						}
-						//ask for help agents in the range that are not dead
-						sent_msgs <- sent_msgs + length(filtered_agents_to_ask);
-						
-						sent_msgs_allocation <- sent_msgs_allocation + length(filtered_agents_to_ask);
-						ask filtered_agents_to_ask{
-							list out <- calculate_willingness(all_task_ids index_of t);
-							if verbose{
-								save ("Agent " + name + " out: " + out) to: output_file_base+"results.txt" type: "text" rewrite: false;
-							}
-							//write "Agent " + name + " out: " + out;
-							if out[0] >= willingness{
-								willingness <- out[0];
-								insert_location <- out[1];
-								agent_to_assign <- name as_int 10;
-								if verbose{
-									//write "Agent " + name + " w: " + willingness + " il: " + insert_location;
-									save ("Agent " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
-								}
-							}
-						}
-						//assign 
+						list output <- request_willingness(t, filtered_agents_close_by, all_task_ids);
+						willingness <- output[0];
+						insert_location <- output[1];
+						agent_to_assign <- output[2];
+						bool done_or_allocated <- output[3];
+						//assign?
 						if !(willingness < 0.0){
-							sent_msgs <- sent_msgs + 1;
-							sent_msgs_allocation <- sent_msgs_allocation + 1;
-							ask simAgents.population[agent_to_assign] {
-								if verbose{
-									//write "agent " + name + " assigned task" + t;
-									//write "tasks todo " + tasks_todo;
-									//write "indices " + tasks_todo_idx;
-									save ("agent " + name + " assigned task " + t + "\n" + "tasks todo " + tasks_todo +"\n" + "indices " + tasks_todo_idx) to: output_file_base+"results.txt" type: "text" rewrite: false;
-								}
-								// TODO add only if not already present
-								if !(tasks_todo contains t){
-									if !(new_tasks contains t){
-										add t to: new_tasks;
-									}
-									add t to: tasks_todo at: insert_location;
-									add all_task_ids index_of t to: tasks_todo_idx at: insert_location;
-									if verbose{
-										//write "agent " + name + " assigned task" + t;
-										//write "tasks todo " + tasks_todo;
-										//write "indices " + tasks_todo_idx;
-										save ("agent " + name + " assigned task" + t + "\n" + "tasks todo " + tasks_todo +"\n" + "indices " + tasks_todo_idx + "\n" + "new_tasks " + new_tasks) to: output_file_base+"results.txt" type: "text" rewrite: false;
-									}
-								}
-								else{
-									if verbose{
-										save ("Already assigned") to: output_file_base+"results.txt" type: "text" rewrite: false;
-									}
-								}
-								
+							if !done_or_allocated{
+								do allocate_tokeep(agent_to_assign, t, insert_location, all_task_ids);	
 							}
-						
-							//completed_tasks_zeroed <- 0;
-							//TODO what does the code below do?
+							else{
+								save ("Already allocated wow ") to: output_file_base+"results.txt" type: "text" rewrite: false;	
+							}
+
 							ask simulation_server{
 								remove agent_has_failed from: alive_agents;
 							}
 						}
+						//if not assigned this round
 						else{
 							if approach = "hybrid"{
 								write "Self-allocation failed. Ask planner for plan";
 								if !asking_planner{
-									asking_planner <- true;
-									plan_active <- false;
-									completed_tasks_zeroed <- 0;
-									
-									list<int> remaining_agents_local;
 									ask simulation_server{
 										remove agent_has_failed from: alive_agents;
-										loop a over: all_agents{
-											if ! (myself.known_failed_global contains a){
-												add a to: remaining_agents_local;
-											}
-										}
 									}
-
-									do ask_for_replan(tasks_completed_global, remaining_agents_local); 
+									do go_with_planner([]);
 								}
 								else {
 									if verbose{
@@ -1218,29 +1282,24 @@ species simAgents skills: [moving, network]{
 						color <- simAgents.population[agent_to_assign].color;
 						
 					}
+				
+				
 				//Re-Calculate the max expected duration
-				int max_duration <- 0;
-						
-				ask simAgents{
-					int dur <- 0;
-							
-					if length(tasks_todo) > 0{
-						dur <- calc_duration();
-					}
-							
-					if dur > max_duration{
-						max_duration <- dur;
-						}
-				}
+				int max_duration <- adjust_watchdog_trigger();
 						
 				//Adjust the tirgger to the watchdog based on the max duration.
-				watchdog_trigger <- max_duration;
+				if !(max_duration = 0){
+					
+					watchdog_trigger <- max_duration;
+					save ("READJUST (gossip) watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
 				temp_cycle <- 0;
-				save ("READJUST (gossip) watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				save ("Same (gossip) watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;
 				}
 			}
 		
 		}
+		
 		already_talked_this_cycle <- [];	
 	}
 	
@@ -1249,19 +1308,11 @@ species simAgents skills: [moving, network]{
 		//get the list of neighbours
 		list allocated <- [];
 		bool done_or_allocated;
-		list agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
-		list filtered_agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
-		if verbose{
-			//write "Agents close by: " + agents_close_by + " to agent " + name ;
-			//write "Already talked to: " + already_talked_this_cycle;
-			save ("tendUnallocatedTask: Agents close by: " + agents_close_by + " to agent " + name + "\n" + "Already talked to: " + already_talked_this_cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
-		}
-		loop a over: agents_close_by {
-			int id <- a.name as_int 10;
-			if (known_failed_global contains id){
-				remove a from: filtered_agents_close_by;
-			}
-		}
+		
+		//Get list of agents close by
+		list<simAgents> filtered_agents_close_by;
+		filtered_agents_close_by <- filter_dead_agents();
+		
 		//if list not empty try to allocate tasks
 		list<int> all_task_ids <- [];
 		loop t over:tasks.population{
@@ -1270,39 +1321,11 @@ species simAgents skills: [moving, network]{
 		save ("tendUnallocatedTask: Agents " + name + " still trying to assign  " +  tasks_left_unassigned) to: output_file_base+"results.txt" type: "text" rewrite: false;
 		
 		loop t over: tasks_left_unassigned{
-			
-			float willingness <- -1.0;
-			int agent_to_assign <- -1;
-			int insert_location <- -2;
-			//we don't consider the asking agent here, because if it could, it would have already assigned this task to the self
-			agent_to_assign <- name as_int 10;
-			done_or_allocated <- false;
-			if verbose{
-				//write "Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location;
-				save ("tendUnallocatedTask: Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			}
-			//ask for help agents in the range that are not dead
-			sent_msgs <- sent_msgs + length(filtered_agents_close_by);
-			sent_msgs_allocation <- sent_msgs_allocation + length(filtered_agents_close_by);
-			ask filtered_agents_close_by{
-				if(tasks_completed_global contains t or tasks_done_by_me contains t or tasks_todo contains t){
-					done_or_allocated <- true;
-				}
-				else{
-					list out <- calculate_willingness(all_task_ids index_of t);
-					write "Agent " + name + " out: " + out;
-					if out[0] >= willingness{
-						willingness <- out[0];
-						insert_location <- out[1];
-						agent_to_assign <- name as_int 10;
-						if verbose{
-							write "Agent " + name + " w: " + willingness + " il: " + insert_location;
-							save ("tendUnallocatedTask: Agent " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
-						}
-					}
-				}
-				
-			}
+			list output <- request_willingness(t, filtered_agents_close_by, all_task_ids);
+			float willingness <- output[0];
+			int insert_location <- output[1];
+			int agent_to_assign <- output[2];
+			done_or_allocated <- output[3];
 			
 			if done_or_allocated{
 				add t to: allocated;
@@ -1310,28 +1333,8 @@ species simAgents skills: [moving, network]{
 			else{
 				//assign 
 				if !(willingness < 0.0){
-					sent_msgs <- sent_msgs + 1;
-					sent_msgs_allocation <- sent_msgs_allocation + 1;
-					ask simAgents.population[agent_to_assign] {
-						if verbose{
-							//write "agent " + name + " assigned " + t;
-							//write "tasks todo " + tasks_todo;
-							//write "indices " + tasks_todo_idx;
-							
-							save ("tendUnallocatedTask: agent " + name + " assigned " + t + "\n" + "tasks todo " + tasks_todo + "\n" + "indices " + tasks_todo_idx) to: output_file_base+"results.txt" type: "text" rewrite: false;
-						}
-						if !(new_tasks contains t){
-							add t to: new_tasks;
-						}
-						add t to: tasks_todo at: insert_location;
-						add all_task_ids index_of t to: tasks_todo_idx at: insert_location;
-						if verbose{
-							//write "agent " + name + " assigned " + t;
-							//write "tasks todo " + tasks_todo;
-							//write "indices " + tasks_todo_idx;
-							save ("tendUnallocatedTask: agent " + name + " assigned " + t + "\n" + "tasks todo " + tasks_todo +"\n" + "indices " + tasks_todo_idx+"\n" + "new_tasks " + new_tasks) to: output_file_base+"results.txt" type: "text" rewrite: false;
-						}
-					}
+					
+					do allocate_tokeep(agent_to_assign, t, insert_location, all_task_ids);
 					
 					//since task has been assigned, mark down, to be removed later
 					add t to: allocated;
@@ -1348,19 +1351,7 @@ species simAgents skills: [moving, network]{
 		}	
 		
 		//Re-Calculate the max expected duration
-		int max_duration <- 0;
-				
-		ask simAgents{
-			int dur <- 0;
-					
-			if length(tasks_todo) > 0{
-				dur <- calc_duration();
-			}
-					
-			if dur > max_duration{
-				max_duration <- dur;
-				}
-		}
+		int max_duration <- adjust_watchdog_trigger();
 				
 		//Adjust the tirgger to the watchdog based on the max duration.
 		if length(tasks_left_unassigned) > 0 and !(max_duration = 0){
@@ -1368,6 +1359,172 @@ species simAgents skills: [moving, network]{
 		}
 		temp_cycle <- 0;
 		save ("READJUST watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;	
+	}
+	
+	//discover which tasks are incomplete
+	list discover_undone{
+		list<int> tasks_pending <- [];
+		list<int> agents_pending <- []; 
+		//get location of the first such task in the list
+		loop task over: tasks.population{
+			if !(tasks_completed_global contains task.taskID) and ! (dead(task)){
+				//move toward this task
+				add task.taskID to: tasks_pending;
+				add task.assigned_ag to: agents_pending;
+				if !(known_failed_global contains task.assigned_ag){
+					add task.assigned_ag to: known_failed_global;
+				}
+			}
+		}
+		return [tasks_pending, agents_pending];
+	}
+	
+	//request willingness
+	list request_willingness(int t, list<simAgents> filtered_agents_close_by, list<int> all_task_ids){
+		list my_out <- calculate_willingness(all_task_ids index_of t);
+		float willingness <- my_out[0];
+		int insert_location <- my_out[1];
+		//we consider the asking agent here
+		int agent_to_assign <- name as_int 10;
+		bool done_or_allocated <- false;
+		if verbose{
+			//write "Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location;
+			save ("request_willingness: Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
+		}
+		//ask for help agents in the range that are not dead
+		sent_msgs <- sent_msgs + length(filtered_agents_close_by);
+		sent_msgs_allocation <- sent_msgs_allocation + length(filtered_agents_close_by);
+		ask filtered_agents_close_by{
+			if(tasks_completed_global contains t or tasks_done_by_me contains t or tasks_todo contains t){
+				done_or_allocated <- true;
+			}
+			else{
+				list out <- calculate_willingness(all_task_ids index_of t);
+				write "Agent " + name + " out: " + out;
+				if out[0] >= willingness{
+					willingness <- out[0];
+					insert_location <- out[1];
+					agent_to_assign <- name as_int 10;
+					if verbose{
+						write "Agent " + name + " w: " + willingness + " il: " + insert_location;
+						save ("WATCHDOG: Agent " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
+					}
+				}
+			}
+			
+		}
+		
+		return [willingness, insert_location, agent_to_assign, done_or_allocated];
+	}
+	
+	//request willingness / not to keep
+	list request_willingness_temp(int t, list<simAgents> filtered_agents_close_by, list<int> all_task_ids){
+		list my_out <- calculate_willingness(all_task_ids index_of t);
+		float willingness <- my_out[0];
+		int insert_location <- my_out[1];
+		int agent_to_assign <- name as_int 10;
+		bool done_or_allocated <- false;
+		if verbose{
+			//write "Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location;
+			save ("Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
+		}
+		sent_msgs <- sent_msgs + length(filtered_agents_close_by);
+		
+		sent_msgs_allocation <- sent_msgs_allocation + length(filtered_agents_close_by);
+		ask filtered_agents_close_by{
+			list out <- calculate_willingness(all_task_ids index_of t);
+			if verbose{
+				save ("Agent " + name + " out: " + out) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			}
+			//write "Agent " + name + " out: " + out;
+			if out[0] >= willingness{
+				willingness <- out[0];
+				insert_location <- out[1];
+				agent_to_assign <- name as_int 10;
+				if verbose{
+					//write "Agent " + name + " w: " + willingness + " il: " + insert_location;
+					save ("Agent " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+			}
+		}
+		return [willingness, insert_location, agent_to_assign, done_or_allocated];
+	}
+	
+	//call planner
+	action go_with_planner(list agents_pending){
+		asking_planner <- true;
+		plan_active <- false;
+		completed_tasks_zeroed <- 0;
+		
+		list<int> remaining_agents_local;
+		ask simulation_server{
+			loop a over: all_agents{
+				if ! (myself.known_failed_global contains a) and ! (agents_pending contains a){
+					add a to: remaining_agents_local;
+				}
+			}
+		}
+		
+		do ask_for_replan(tasks_completed_global, remaining_agents_local); 	
+	}
+	
+	//allocate // this one should be kept for all. to replace allocate below as well
+	action allocate_tokeep(int agent_to_assign, int t, int insert_location, list<int> all_task_ids){
+		sent_msgs <- sent_msgs + 1;
+		sent_msgs_allocation <- sent_msgs_allocation + 1;
+		ask simAgents.population[agent_to_assign] {
+			if verbose{
+				//write "agent " + name + " assigned task" + t;
+				//write "tasks todo " + tasks_todo;
+				//write "indices " + tasks_todo_idx;
+				save ("agent " + name + " assigned task " + t + "\n" + "tasks todo " + tasks_todo +"\n" + "indices " + tasks_todo_idx) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			}
+			// TODO add only if not already present
+			if !(tasks_todo contains t){
+				if !(new_tasks contains t){
+					 if !(tasks_completed_global contains t){
+						add t to: new_tasks;
+					 }
+				}
+				add t to: tasks_todo at: insert_location;
+				add all_task_ids index_of t to: tasks_todo_idx at: insert_location;
+				if verbose{
+					//write "agent " + name + " assigned task" + t;
+					//write "tasks todo " + tasks_todo;
+					//write "indices " + tasks_todo_idx;
+					save ("agent " + name + " assigned task" + t + "\n" + "tasks todo " + tasks_todo +"\n" + "indices " + tasks_todo_idx + "\n" + "new_tasks " + new_tasks) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+			}
+			else{
+				if verbose{
+					save ("Already assigned") to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
+			}
+			
+		}	
+	}
+	
+	//allocate-temp
+	action allocate(int agent_to_assign, int t, int insert_location, list<int> all_task_ids){
+		sent_msgs <- sent_msgs + 1;
+		sent_msgs_allocation <- sent_msgs_allocation + 1;
+		ask simAgents.population[agent_to_assign] {
+			if verbose{
+				save ("ALLOCATE: agent " + name + " assigned " + t + "\n" + "tasks todo " + tasks_todo + "\n" + "indices " + tasks_todo_idx) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			}
+			if !(new_tasks contains t){
+				add t to: new_tasks;
+			}
+			add t to: tasks_todo at: insert_location;
+			add all_task_ids index_of t to: tasks_todo_idx at: insert_location;
+			if verbose{
+				//write "agent " + name + " assigned " + t;
+				//write "tasks todo " + tasks_todo;
+				//write "indices " + tasks_todo_idx;
+				save ("ALLOCATE: agent " + name + " assigned " + t + "\n" + "tasks todo " + tasks_todo +"\n" + "indices " + tasks_todo_idx+"\n" + "new_tasks " + new_tasks) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			}
+		}	
+		
 	}
 	
 	//If too much time has passed start trying to reallocate those tasks that are pending
@@ -1383,19 +1540,12 @@ species simAgents skills: [moving, network]{
 			if verbose{
 				save ("WATCHDOG: There are " + nr_tasks_unknown + " tasks, the status of which is unknown") to: output_file_base+"results.txt" type: "text" rewrite: false;
 			}
-			list tasks_pending <- [];
-			list agents_pending <- []; 
-			//get location of the first such task in the list
-			loop task over: tasks.population{
-				if !(tasks_completed_global contains task.taskID) and ! (dead(task)){
-					//move toward this task
-					add task.taskID to: tasks_pending;
-					add task.assigned_ag to: agents_pending;
-					if !(known_failed_global contains task.assigned_ag){
-						add task.assigned_ag to: known_failed_global;
-					}
-				}
-			}
+			
+			//get tasks which have not been completed
+			list output <- discover_undone();
+			list<int> tasks_pending <- output[0];
+			list<int> agents_pending <- output[1]; 
+			
 			if verbose{
 				save ("WATCHDOG: known_failed_global " + known_failed_global) to: output_file_base+"results.txt" type: "text" rewrite: false;
 				save ("WATCHDOG: tasks pending " + tasks_pending) to: output_file_base+"results.txt" type: "text" rewrite: false;
@@ -1404,20 +1554,7 @@ species simAgents skills: [moving, network]{
 			//if planner approach, then ask planner otherwise.
 			if approach = "planner"{
 				if !asking_planner{
-					asking_planner <- true;
-					plan_active <- false;
-					completed_tasks_zeroed <- 0;
-					
-					list<int> remaining_agents_local;
-					ask simulation_server{
-						loop a over: all_agents{
-							if ! (myself.known_failed_global contains a) and ! (agents_pending contains a){
-								add a to: remaining_agents_local;
-							}
-						}
-					}
-					
-					do ask_for_replan(tasks_completed_global, remaining_agents_local); 
+					do go_with_planner(agents_pending);
 				}
 				else {
 					if verbose{
@@ -1426,22 +1563,16 @@ species simAgents skills: [moving, network]{
 				}
 			}
 			else {
-				//get the list of neighbours
 				list allocated <- [];
 				bool done_or_allocated;
-				list agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
-				list filtered_agents_close_by <- agents_at_distance(communication_range) of_species simAgents;
-				if verbose{
-					//write "Agents close by: " + agents_close_by + " to agent " + name ;
-					//write "Already talked to: " + already_talked_this_cycle;
-					save ("WATCHDOG: Agents close by: " + agents_close_by + " to agent " + name + "\n" + "Already talked to: " + already_talked_this_cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
-				}
-				loop a over: agents_close_by {
-					int id <- a.name as_int 10;
-					if (known_failed_global contains id){
-						remove a from: filtered_agents_close_by;
-					}
-				}
+				float willingness;
+				int insert_location;
+				int agent_to_assign;
+				
+				//Get list of agents close by
+				list<simAgents> filtered_agents_close_by;
+				filtered_agents_close_by <- filter_dead_agents();
+				
 				//if list not empty try to allocate tasks
 				list<int> all_task_ids <- [];
 				loop t over:tasks.population{
@@ -1451,83 +1582,22 @@ species simAgents skills: [moving, network]{
 				if length(tasks_pending) > 0{
 					loop t over: tasks_pending{
 					
-						list my_out <- calculate_willingness(all_task_ids index_of t);
-						float willingness <- my_out[0];
-						int insert_location <- my_out[1];
-						int agent_to_assign <- -1;
-						//we consider the asking agent here
-						agent_to_assign <- name as_int 10;
-						done_or_allocated <- false;
-						if verbose{
-							//write "Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location;
-							save ("WATCHDOG: Agent re-allocating " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
-						}
-						//ask for help agents in the range that are not dead
-						sent_msgs <- sent_msgs + length(filtered_agents_close_by);
-						sent_msgs_allocation <- sent_msgs_allocation + length(filtered_agents_close_by);
-						ask filtered_agents_close_by{
-							if(tasks_completed_global contains t or tasks_done_by_me contains t or tasks_todo contains t){
-								done_or_allocated <- true;
-							}
-							else{
-								list out <- calculate_willingness(all_task_ids index_of t);
-								write "Agent " + name + " out: " + out;
-								if out[0] >= willingness{
-									willingness <- out[0];
-									insert_location <- out[1];
-									agent_to_assign <- name as_int 10;
-									if verbose{
-										write "Agent " + name + " w: " + willingness + " il: " + insert_location;
-										save ("WATCHDOG: Agent " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
-									}
-								}
-							}
-							
-						}
+						list output <- request_willingness(t, filtered_agents_close_by, all_task_ids);
+						willingness <- output[0];
+						insert_location <- output[1];
+						agent_to_assign <- output[2];
+						done_or_allocated <- output[3];
 						
 						if !done_or_allocated{
 							//assign 
 							if !(willingness < 0.0){
-								sent_msgs <- sent_msgs + 1;
-								sent_msgs_allocation <- sent_msgs_allocation + 1;
-								ask simAgents.population[agent_to_assign] {
-									if verbose{
-										//write "agent " + name + " assigned " + t;
-										//write "tasks todo " + tasks_todo;
-										//write "indices " + tasks_todo_idx;
-										
-										save ("WATCHDOG: agent " + name + " assigned " + t + "\n" + "tasks todo " + tasks_todo + "\n" + "indices " + tasks_todo_idx) to: output_file_base+"results.txt" type: "text" rewrite: false;
-									}
-									if !(new_tasks contains t){
-										add t to: new_tasks;
-									}
-									add t to: tasks_todo at: insert_location;
-									add all_task_ids index_of t to: tasks_todo_idx at: insert_location;
-									if verbose{
-										//write "agent " + name + " assigned " + t;
-										//write "tasks todo " + tasks_todo;
-										//write "indices " + tasks_todo_idx;
-										save ("WATCHDOG: agent " + name + " assigned " + t + "\n" + "tasks todo " + tasks_todo +"\n" + "indices " + tasks_todo_idx+"\n" + "new_tasks " + new_tasks) to: output_file_base+"results.txt" type: "text" rewrite: false;
-									}
-								}
+								do allocate_tokeep(agent_to_assign, t, insert_location, all_task_ids);
 							}
 							else{
 								if approach = "hybrid"{
 									write "Self-allocation failed. Ask planner for plan";
 									if !asking_planner{
-										asking_planner <- true;
-										plan_active <- false;
-										completed_tasks_zeroed <- 0;
-										list<int> remaining_agents_local;
-										ask simulation_server{
-											loop a over: all_agents{
-												if ! (myself.known_failed_global contains a) and ! (agents_pending contains a){
-													add a to: remaining_agents_local;
-												}
-											}
-										}
-											
-										do ask_for_replan(tasks_completed_global, remaining_agents_local); 
+										do go_with_planner(agents_pending);
 									}
 									else {
 										if verbose{
@@ -1555,26 +1625,38 @@ species simAgents skills: [moving, network]{
 				}
 				
 				//Re-Calculate the max expected duration
-				int max_duration <- 0;
-						
-				ask simAgents{
-					int dur <- 0;
-							
-					if length(tasks_todo) > 0{
-						dur <- calc_duration();
-					}
-							
-					if dur > max_duration{
-						max_duration <- dur;
-						}
-				}
+				int max_duration <- adjust_watchdog_trigger();
 						
 				//Adjust the tirgger to the watchdog based on the max duration.
-				watchdog_trigger <- max_duration;
+				if !(max_duration = 0){
+					
+					watchdog_trigger <- max_duration;
+					save ("READJUST (watchdog) watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				}
 				temp_cycle <- 0;
-				save ("READJUST (gossip) watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+				save ("SAME (watchdog) watchdog trigger: " + watchdog_trigger ) to: output_file_base+"results.txt" type: "text" rewrite: false;
 			}
 		}
+	}
+	
+	int adjust_watchdog_trigger{
+		//Re-Calculate the max expected duration
+		int max_duration <- 0;
+				
+		ask simAgents{
+			int dur <- 0;
+					
+			if length(tasks_todo) > 0{
+				dur <- int(calc_duration());
+			}
+					
+			if dur > max_duration{
+				max_duration <- dur;
+				}
+		}
+				
+		//Adjust the tirgger to the watchdog based on the max duration.
+		return max_duration;
 	}
 	
 	reflex goToDepot when: !asking_planner and !simulation_init and !failed and length(tasks_todo) <= 0{
@@ -1588,6 +1670,7 @@ species simAgents skills: [moving, network]{
 			
 		
 	}
+	
 	//If the known global state of tasks is not fully known, walk toward tasks for which the robot has no info
 	//this is basically trying to help the gossip propagate.
 	reflex wanderTillComplete when: !asking_planner and !simulation_init and !failed and length(tasks_todo) <= 0 and false{
@@ -1678,10 +1761,10 @@ species simAgents skills: [moving, network]{
 		max_duration <- rruga / speed + 2;
 		
 		if verbose{
-			save ("calc_duration tasks " + tasks_todo ) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			save ("calc_duration agent " + name + " location " + location + " task " + tasks_todo[0] + " location " +tasks.population[tasks_todo_idx[0]].location ) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			save ("calc_duration rruga " + rruga ) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			save ("calc_duration max_duration" + max_duration ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			//save ("calc_duration tasks " + tasks_todo ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			//save ("calc_duration agent " + name + " location " + location + " task " + tasks_todo[0] + " location " +tasks.population[tasks_todo_idx[0]].location ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			//save ("calc_duration rruga " + rruga ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			//save ("calc_duration max_duration" + max_duration ) to: output_file_base+"results.txt" type: "text" rewrite: false;
 		}
 		
 		//Add times from task to task, + 1 each
@@ -1696,9 +1779,9 @@ species simAgents skills: [moving, network]{
 				rruga <- sqrt(xdiff*xdiff + ydiff*ydiff);
 				max_duration <- max_duration + rruga / speed + 2;
 				if verbose{
-					save ("calc_duration task 1 " + tasks_todo[i] + " location " + tasks.population[tasks_todo_idx[i]].location + " task 2 " + tasks_todo[i+1] + " location " + tasks.population[tasks_todo_idx[i+1]].location ) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					save ("calc_duration rruga " + rruga ) to: output_file_base+"results.txt" type: "text" rewrite: false;
-					save ("calc_duration max_duration " + max_duration ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+					//save ("calc_duration task 1 " + tasks_todo[i] + " location " + tasks.population[tasks_todo_idx[i]].location + " task 2 " + tasks_todo[i+1] + " location " + tasks.population[tasks_todo_idx[i+1]].location ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+					//save ("calc_duration rruga " + rruga ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+					//save ("calc_duration max_duration " + max_duration ) to: output_file_base+"results.txt" type: "text" rewrite: false;
 				}
 			}			
 		}
@@ -1709,9 +1792,9 @@ species simAgents skills: [moving, network]{
 		rruga <- sqrt((depot.x - task_x)*(depot.x - task_x) + (depot.y - task_y)*(depot.y - task_y));
 		max_duration <- max_duration + rruga / speed + 2;
 		if verbose{
-			save ("calc_duration task 1 " + tasks_todo[length(tasks_todo_idx)-1] + " location " + tasks.population[tasks_todo_idx[length(tasks_todo_idx)-1]].location + " depot " + depot ) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			save ("calc_duration rruga " + rruga ) to: output_file_base+"results.txt" type: "text" rewrite: false;
-			save ("calc_duration max_duration " + max_duration ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			//save ("calc_duration task 1 " + tasks_todo[length(tasks_todo_idx)-1] + " location " + tasks.population[tasks_todo_idx[length(tasks_todo_idx)-1]].location + " depot " + depot ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			//save ("calc_duration rruga " + rruga ) to: output_file_base+"results.txt" type: "text" rewrite: false;
+			//save ("calc_duration max_duration " + max_duration ) to: output_file_base+"results.txt" type: "text" rewrite: false;
 		}
 		//Add some delta
 		max_duration <- max_duration + DELTA;
@@ -1746,7 +1829,7 @@ species simAgents skills: [moving, network]{
 
 	}
 	
-	reflex timeout when: (infeasible or (cycle - starttime > 50000)) and !simulation_init and !asking_planner{//timeout only if plan not feasible, close in the next step
+	reflex timeout when: (infeasible or (cycle - starttime > 5000)) and !simulation_init and !asking_planner{//timeout only if plan not feasible, close in the next step
 	
 		if timeout_trigger = 0{
 			infeasible <- false;
@@ -1840,3 +1923,4 @@ experiment "GLOCAL Test" type: gui {
 	}
 
 }
+
