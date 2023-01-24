@@ -5,4 +5,4 @@ Z = sin(X) + cos(Y);
 surf(X,Y,Z);
 
 
-p = fig2plotly(gcf, 'TreatAs', 'surf');
+p = fig2plotly(gcf, 'TreatAs', 'surf', 'filename', 'index');
