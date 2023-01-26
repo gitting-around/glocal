@@ -69,3 +69,8 @@ The ```folder_root``` variable has to be the same as in the previous step.
 
 This script does not have currently a variable for the ```comm_range```. Additionally, it is not possible to plot a subset of the metrics as in the previous steps. All metrics will be plotted in one figure with subfigures.
 Here it is necessary to set the instance (line 2).
+
+# Paper Results
+
+The raw logs recorded in the context of the paper are contained in a ```.zip```in this folder (NEEDS TO BE ADDED). To generate our results with the matlab scripts, unzip the folder and follow the procedures. 
+The figures can also be accessed directly at https://gitting-around.github.io/glocal/.
