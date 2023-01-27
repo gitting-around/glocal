@@ -72,5 +72,5 @@ Here it is necessary to set the instance (line 2).
 
 # Paper Results
 
-The raw logs recorded in the context of the paper are contained in a ```.zip```in this folder (NEEDS TO BE ADDED). To generate our results with the matlab scripts, unzip the folder and follow the procedures. 
+The processed logs (gotten with ```process_raw_data.m```) recorded in the context of the paper are contained in ```jan27-res.zip```. To generate the plots corresponding to our results with the matlab scripts, unzip the folder, located in the same folder as the matlab scripts, and follow the procedures. Note that this is not the raw data (omitted due to space issues), as such you should not call ```process_raw_data.m```.
 The figures can also be accessed directly at https://gitting-around.github.io/glocal/.
