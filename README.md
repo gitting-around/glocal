@@ -61,10 +61,10 @@ the case with 4 failures, to do so in line 42 we would write ```int idx_tofail <
 
 The loops over the parameters to setup the next simulation look like below:
 ```code
-loop #runs:
-  loop #fails:
-    loop #approaches:
-      loop #instances:
+loop #instances:
+  loop #approaches:
+    loop #fails:
+      loop #runs:
 ```
 
 > **Warning** You are of course free to change the rest of the code, however do so at own peril.
