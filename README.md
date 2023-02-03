@@ -50,21 +50,21 @@ You can do this by:
 * Setting the number of run you want to start from.
 **FIX in line** https://github.com/gitting-around/glocal/blob/479fdc42fcc4dbcd4fb699c1643a678cc016a32c/models/gitagent_batch_refactored.gaml#L71
 * Specifying from which approach to start from (the index depends on the order when that list is initialised in line 25.).
-**FIX in line** Assume I have declared the approaches as ```list<string> param_approach <- ['agent', 'hybrid', 'planner'];``` (line 25). Assume I want to restart from 
-hybrid, to do so in line 41 we would write ```int idx_approach <- 0;```.
+Assume I have declared the approaches as ```list<string> param_approach <- ['agent', 'hybrid', 'planner'];``` (line 25). Assume I want to restart from 
+hybrid, to do so in line 41 we would write ```int idx_approach <- 1;```.
 * Specifying from which problem instance, similar to the previous.
-**FIX in line** Assume I have declared the approaches as ```list<int> param_instance <- [0,1,2];``` (line 23). Assume I want to restart from 
+Assume I have declared the approaches as ```list<int> param_instance <- [0,1,2];``` (line 23). Assume I want to restart from 
 the last instance, to do so in line 40 we would write ```int idx_instance <- 2;```.
 * Specifying the failure case, similar to the previous.
-**FIX in line** Assume I have declared the approaches as ```llist<int> param_tofail <- [0,1,2,3,4,5,6,7];``` (line 28). Assume I want to restart from 
+Assume I have declared the approaches as ```list<int> param_tofail <- [0,1,2,3,4,5,6,7];``` (line 28). Assume I want to restart from 
 the case with 4 failures, to do so in line 42 we would write ```int idx_tofail <- 5;```.
 
 The loops over the parameters to setup the next simulation look like below:
 ```code
-loop #runs:
-  loop #fails:
-    loop #approaches:
-      loop #instances:
+loop #instances:
+  loop #approaches:
+    loop #fails:
+      loop #runs:
 ```
 
 > **Warning** You are of course free to change the rest of the code, however do so at own peril.
