@@ -72,5 +72,5 @@ Here it is necessary to set the instance (line 2).
 
 # Paper Results
 
-The processed logs (gotten with ```process_raw_data.m```) recorded in the context of the paper are contained in [feb17-range100.zip](https://github.com/gitting-around/glocal/blob/main/results/feb17-range100.zip). To generate the plots corresponding to our results with the matlab scripts, unzip the folder, located in the same folder as the matlab scripts, and follow the procedures. Note that this is not the raw data (omitted due to space issues), as such you SHOULD NOT CALL ```process_raw_data.m```.
+The processed logs (gotten with ```process_raw_data.m```) recorded in the context of the paper are contained in [mar3_range100.zip](https://github.com/gitting-around/glocal/blob/main/results/mar3_range100.zip). To generate the plots corresponding to our results with the matlab scripts, unzip the folder, located in the same folder as the matlab scripts, and follow the procedures. Note that this is not the raw data (omitted due to space issues), as such you SHOULD NOT CALL ```process_raw_data.m```.
 The figures can also be accessed directly at https://gitting-around.github.io/glocal/.

@@ -9,7 +9,7 @@ pl_data = cell(1,total_fails);
 ag_data = cell(1,total_fails);
 hy_data = cell(1,total_fails);
 
-folder_root = "jan23-res/range20/";
+folder_root = "mar3_range100/range100/";
 
 %Get data from csv files
 for i=fails_base:total_fails+1

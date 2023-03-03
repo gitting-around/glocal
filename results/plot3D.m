@@ -8,11 +8,11 @@ total_fails = 7;
 no_task_sets = 3;
 task_set_base = 50;
 %get results from specific range folder
-comm_range = 20;
+comm_range = 1000;
 if comm_range > 100
-    folder_root = ['jan23-res/rangeInf/'];
+    folder_root = ['mar3_range100/rangeInf/'];
 else
-    folder_root = ['jan23-res/range' int2str(comm_range) '/'];
+    folder_root = ['mar3_range100/range' int2str(comm_range) '/'];
 end
 
 pl_data = cell(no_task_sets,total_fails);
