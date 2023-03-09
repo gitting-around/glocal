@@ -19,12 +19,12 @@ global{
 	///////////////////////////////////////////////////////////////////
 	//Defining parameters for batch experiments////////////////////////
 	list<int> taskset_lengths <- [50,100,150,300,500];
-	//list<int> param_instance <- [0];
+	//list<int> param_instance <- [1];
 	list<int> param_instance <- [0,1,2];
 	//list<int> param_instance <- [0];
 	list<string> param_approach <- ['agent', 'hybrid', 'planner'];
 	//list<string> param_approach <- ['agent'];
-	//list<int> param_tofail <- [1,2,3];
+	//list<int> param_tofail <- [4];
 	list<int> param_tofail <- [0,1,2,3,4,5,6,7];
 	list unique_agent_equipment <- [];
 	list unique_task_equipment <- [];
@@ -36,7 +36,6 @@ global{
 	//list<string> param_approach <- ['agent'];
 	//list<int> param_tofail <- [3];
 	//int total_runs <- 1;
-	list<int> param_seed <- range(1,total_runs);
 	int idx_instance <- 0;
 	int idx_approach <- 0;
 	int idx_tofail <- 0;
@@ -52,14 +51,15 @@ global{
 	bool simulation_init <- true;
 	geometry shape <- rectangle(300#m,300#m);
 	//float communication_range <- 5#m;
-    //float communication_range <- 10000000#m;
-	float communication_range <- 100#m;
+    float communication_range <- 50#m;
+	//float communication_range <- 50#m;
 	int mission_count <-0;
 	bool stop <- false;
 	bool ping  <- true; 
 	bool infeasible <- false;
 	int timeout_trigger_VALUE <- 1;
 	int timeout_trigger <- timeout_trigger_VALUE;
+	int percent_complete_trigger <- 50; //in %, used in the hybrid case to trigger calls to the planner
 	
 	//Related to inducing failures
 	float fail_prob <- 0.05;
@@ -77,7 +77,7 @@ global{
 	int watchdog_trigger <- 20*(instance+1);
 	int progress <- 0; 
 	int progress_diff  <- 0;
-	//float seed <- run_number; #comment line 137 to reproduce run 18 error with 3 failures and communication range of 5. start from run 17
+	//OLD: float seed <- run_number; #comment line 137 to reproduce run 18 error with 3 failures and communication range of 5. start from run 17
 	
 	string output_file_base <- "inst" + instance + "_" + approach + "_fails_" + still_to_fail + "_" + run_number + "_";
 	
@@ -548,14 +548,14 @@ species simulation_server skills: [network]{
 							save ("I Robot: " + name + " am out." + " At time: " + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
 						}
 						failed <- true;
-						tasks_todo <- [];
-						tasks_todo_idx <- [];
 						
 						failing <- true;
 						if !(length(tasks_todo) > 0){
 							save ("WARNING: this agent was doing nothing when it failed") to: output_file_base+"results.txt" type: "text" rewrite: false;
 							
 						}
+						tasks_todo <- [];
+						tasks_todo_idx <- [];
 						
 					}
 					else{
@@ -619,6 +619,30 @@ species simulation_server skills: [network]{
 		save ("unique agent equipment: " + unique_agent_equipment) to: output_file_base+"results.txt" type: "text" rewrite: false;
 		save ("Plan infeasible: " + unique_agent_equipment) to: output_file_base+"results.txt" type: "text" rewrite: false;
 		infeasible <- !(remaining_agent_equipment contains_all unique_agent_equipment);
+		
+		//if infeasible, fill anyway the array with agents to be failed.
+		
+		if infeasible{
+			loop while: length(failing_agents[param_tofail[idx_tofail]][run_number-1]) < param_tofail[idx_tofail]{
+	
+				ask one_of(simAgents){
+					if !failed{
+						write "[POST/SIM] I Robot: " + name + " am out." + " At time: " + cycle color: #red; 
+						remove int(name) from: myself.alive_agents;
+						if verbose{
+							save ("[POST/SIM] I Robot: " + name + " am out." + " At time: " + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+						}
+						failed <- true;
+						tasks_todo <- [];
+						tasks_todo_idx <- [];
+						
+						add int(name) to: failing_agents[param_tofail[idx_tofail]][run_number-1];
+						
+					}
+				}
+			}			
+		}
+
 	}
 	
 	reflex update_temp_cycle{
@@ -729,6 +753,12 @@ species simAgents skills: [moving, network]{
 						stop <- true;
 					}
 					instance <- param_instance[idx_instance];
+					failing_agents <- [[], [], [], [], [], [], [], []];
+					loop el over: range(0,length(failing_agents)-1){
+					loop t over: range(0,total_runs-1){
+						add [] to: failing_agents[el,t];
+					}
+		}
 				}
 				approach <- param_approach[idx_approach];
 			}
@@ -926,9 +956,9 @@ species simAgents skills: [moving, network]{
 	list<simAgents> filter_dead_agents{
 		//refactor loop a over: agents_close_by
 		//get agents in the range
-		list agents_to_ask <- simAgents at_distance communication_range;
+		list<simAgents> agents_to_ask <- simAgents at_distance communication_range;
 		//remove dead agents
-		list filtered_agents_close_by <- [];
+		list<simAgents> filtered_agents_close_by <- [];
 		loop a over:agents_to_ask{
 			if ! a.failed{
 				add a to: filtered_agents_close_by; // this we can keep because in a real scenario sending a message to a dead agent will not yield a response anyway. 
@@ -936,6 +966,7 @@ species simAgents skills: [moving, network]{
 			//TODO maybe add here to known_failed_global the id of the failed agent if not there yet.
 		}
 		
+		filtered_agents_close_by <- (filtered_agents_close_by sort_by (each.name)) ;
 		return filtered_agents_close_by;
 	}
 	
@@ -1251,20 +1282,32 @@ species simAgents skills: [moving, network]{
 						//if not assigned this round
 						else{
 							if approach = "hybrid"{
-								write "Self-allocation failed. Ask planner for plan";
-								if !asking_planner{
-									ask simulation_server{
-										remove agent_has_failed from: alive_agents;
+								int percent_complete <- 100 * int(completed_tasks/length_original_taskset);
+								if percent_complete < percent_complete_trigger{//call planner if less tasks than the trigger are complete
+									write "Self-allocation failed. Ask planner for plan";
+									if !asking_planner{
+										ask simulation_server{
+											remove agent_has_failed from: alive_agents;
+										}
+										do go_with_planner([]);
 									}
-									do go_with_planner([]);
+									else {
+										if verbose{
+											write "Already being taken care of";
+										}
+									}
+									write "Breaking";
+									break;
 								}
-								else {
+								else{//else act like in agent
+									//add the task to the list: tasks_left_unassigned idx
+									add t to: tasks_left_unassigned;
+									write "The list of uncompleted task: " + tasks_left_unassigned;
 									if verbose{
-										write "Already being taken care of";
+										save ("The list of uncompleted task: " + tasks_left_unassigned) to: output_file_base+"results.txt" type: "text" rewrite: false;
+										
 									}
 								}
-								write "Breaking";
-								break;
 							}
 							else if approach = "agent"{
 								//add the task to the list: tasks_left_unassigned idx
@@ -1304,7 +1347,7 @@ species simAgents skills: [moving, network]{
 	}
 	
 	//Only in the agent approach, once an agent is done with its tasks, it'll start handling the tasks it couldn\t assign when it noticed a dead agent
-	reflex tendUnallocatedTasks when: approach = 'agent' and length(tasks_todo) <= 0 and length(tasks_left_unassigned) > 0 and !simulation_init and !failed{
+	reflex tendUnallocatedTasks when: !(approach = 'planner') and length(tasks_todo) <= 0 and length(tasks_left_unassigned) > 0 and !simulation_init and !failed{
 		//get the list of neighbours
 		list allocated <- [];
 		bool done_or_allocated;
@@ -1354,7 +1397,8 @@ species simAgents skills: [moving, network]{
 		int max_duration <- adjust_watchdog_trigger();
 				
 		//Adjust the tirgger to the watchdog based on the max duration.
-		if length(tasks_left_unassigned) > 0 and !(max_duration = 0){
+		//if length(tasks_left_unassigned) > 0 and !(max_duration = 0){
+		if !(max_duration = 0){
 			watchdog_trigger <- max_duration;
 		}
 		temp_cycle <- 0;
@@ -1407,7 +1451,7 @@ species simAgents skills: [moving, network]{
 					agent_to_assign <- name as_int 10;
 					if verbose{
 						write "Agent " + name + " w: " + willingness + " il: " + insert_location;
-						save ("WATCHDOG: Agent " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
+						save ("request willingness: Agent " + name + " w: " + willingness + " il: " + insert_location) to: output_file_base+"results.txt" type: "text" rewrite: false;
 					}
 				}
 			}
@@ -1595,17 +1639,28 @@ species simAgents skills: [moving, network]{
 							}
 							else{
 								if approach = "hybrid"{
-									write "Self-allocation failed. Ask planner for plan";
-									if !asking_planner{
-										do go_with_planner(agents_pending);
+									int percent_complete <- 100 * int(completed_tasks/length_original_taskset);
+									if percent_complete < percent_complete_trigger{//call planner if less tasks than the trigger are complete
+										if !asking_planner{
+											do go_with_planner([]);
+										}
+										else {
+											if verbose{
+												write "Already being taken care of";
+											}
+										}
+										write "Breaking";
+										break;
 									}
-									else {
+									else{//else act like in agent
+										//add the task to the list: tasks_left_unassigned idx
+										add t to: tasks_left_unassigned;
+										write "The list of uncompleted task: " + tasks_left_unassigned;
 										if verbose{
-											write "Already being taken care of";
+											save ("The list of uncompleted task: " + tasks_left_unassigned) to: output_file_base+"results.txt" type: "text" rewrite: false;
+											
 										}
 									}
-									write "Breaking";
-									break;
 								}
 								else if approach = "agent"{
 									//add the task to the list: tasks_left_unassigned idx
@@ -1653,6 +1708,8 @@ species simAgents skills: [moving, network]{
 			if dur > max_duration{
 				max_duration <- dur;
 				}
+			
+			save ("adjust watchdog: " + max_duration + " agent: " + name ) to: output_file_base+"results.txt" type: "text" rewrite: false;
 		}
 				
 		//Adjust the tirgger to the watchdog based on the max duration.
@@ -1742,6 +1799,24 @@ species simAgents skills: [moving, network]{
 				save ("Mission is complete" + "\n" + "Sending mission complete") to: output_file_base+"results.txt" type: "text" rewrite: false;
 			}
 			//do send contents: "Mission Complete";
+			loop while: length(failing_agents[param_tofail[idx_tofail]][run_number-1]) < param_tofail[idx_tofail]{
+	
+				ask one_of(simAgents){
+					if !failed{
+						write "[POST/SIM] I Robot: " + name + " am out." + " At time: " + cycle color: #red; 
+						remove int(name) from: simulation_server[0].alive_agents;
+						if verbose{
+							save ("[POST/SIM] I Robot: " + name + " am out." + " At time: " + cycle) to: output_file_base+"results.txt" type: "text" rewrite: false;
+						}
+						failed <- true;
+						tasks_todo <- [];
+						tasks_todo_idx <- [];
+						
+						add int(name) to: failing_agents[param_tofail[idx_tofail]][run_number-1];
+						
+					}
+				}
+			}
 			
 			//Reset everything
 			do reset;
@@ -1833,6 +1908,7 @@ species simAgents skills: [moving, network]{
 	
 		if timeout_trigger = 0{
 			infeasible <- false;
+			
     		write "TIMEOUT reset";
     		save ("TIMEOUT reset") to: output_file_base+"results.txt" type: "text" rewrite: false;
     		do reset;
