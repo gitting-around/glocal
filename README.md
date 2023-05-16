@@ -13,7 +13,7 @@ After downloading Gama, load the project (```models/``` folder).
 ## Run the simulation
 
 * Open Gama, and load the ```gitagent_batch_refactored.gaml``` file in the editor. Here you can potentially change parameters like the communication range etc.
-* Run the planner executable (```planner.exe```).
+* Run the planner executable (```GLocal planner.exe```).
 * Run the experiment in Gama. You should observe in the terminal view of the planner that a ```ping``` message has been received. This means that the simulation
 has been initiated correctly, and will continue until all simulations are run.
 * At the end of all simulations, a red line will be printed on the Gama console with the following: ```Simulation End!```.
